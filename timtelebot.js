@@ -6,14 +6,27 @@ var fs = require("fs");
 
 var url =
   "https://data.epa.gov.tw/api/v1/aqx_p_432?limit=1000&api_key=9be7b239-557b-4c10-9775-78cadfc555e9&sort=ImportDate%20desc&format=json";
-let CountySet = new Set();
-let siteNameSet = new Set();
+
 let Data = new Array();
 let buttonArea; //判斷每個按鈕不同的使用情境的變數
+let CountySiteNameObjectII; // 查字典用的
+/* 這是telebot專屬鍵盤layout (telebotInlineButtonLayoutSetting) */
 let inlineButtonHere;
+
+/* 這是使用者收到測站資料 */
+let siteSortData = "";
+
+/* 要設定定時提醒的測站名稱 (reminderSiteName) */
 let setUpTimeSiteName;
+
+/* 測資的中文對照名稱所需變數 */
+let fieldsObject = {};
+
+/* 屬於Cronjob用的變數 */
 let job;
 var CronJob = require("cron").CronJob;
+
+/* dataRun是去抓政府開放資料中的AQX Data(空氣品質資料)(之後可用generator、catcher、crawler來命名)，同時現在還有在每跑一次後作新的字典 */
 const dataRun = function () {
   https.get(url, function (response) {
     var data = "";
@@ -29,83 +42,113 @@ const dataRun = function () {
 
       //console.log(data.records[0].SiteName);
       console.log("已跑完");
+      //jim說做查字典，直接把查字典放在抓資料裡面，擔心會新增測站或是減少測站//
+      ///////////////////////////////////////////////////////////////////////
+
+      const DictionaryCountySiteName = function (Data) {
+        CountySiteNameObjectII = {};
+        for (let i = 0; i < Data.records.length; i++) {
+          let key = Data.records[i].County;
+          let values = Data.records[i].SiteName;
+          if (CountySiteNameObjectII.hasOwnProperty(key)) {
+            //檢查object裡面有無此county作key存在
+            CountySiteNameObjectII[key].push(values);
+          } else {
+            CountySiteNameObjectII[key] = [values];
+          }
+        }
+      };
+      DictionaryCountySiteName(Data);
+      //console.log(Object.keys(CountySiteNameObjectII));
+      //////////////////////////////////////////////////////////////////
+
+      ///以下是把各測站的資訊與中文對上的code
+
+      const addFieldsObject = function (keys, values) {
+        return (fieldsObject[keys] = values);
+      };
+      for (let i = 0; i < Data.fields.length; i++) {
+        let fieldsKeys = Data.fields[i].id;
+        let fieldsValues = Data.fields[i].info.label;
+        addFieldsObject(fieldsKeys, fieldsValues);
+      }
+      //console.log(fieldsObject);
+      //////////////////////
+      ///以下是把各測站的資訊與中文對上的code
     });
   });
 };
 dataRun();
-const countrySearch = function () {
-  for (let i = 0; i < Data.records.length; i++) {
-    CountySet.add(Data.records[i].County);
-  }
-  const cityQuery = [];
-  const countySetArray = [...CountySet];
-  for (let i = 0; i < countySetArray.length; i++) {
+
+/* 製作InlineButton用的 */
+const makeAInlineButtonHere = function (x) {
+  const searchQuery = [];
+  let searchSetArray = x;
+  for (let i = 0; i < searchSetArray.length; i++) {
     let separateArray = [];
-    separateArray.push(countySetArray[i]);
-    cityQuery.push(separateArray);
+    separateArray.push(searchSetArray[i]);
+    searchQuery.push(separateArray);
   }
   inlineButtonHere = [];
-  for (let i = 0; i < cityQuery.length / 5; i++) {
+  for (let i = 0; i < searchQuery.length / 5; i++) {
     if (inlineButtonHere[i] == undefined) {
       inlineButtonHere[i] = [
-        bot.inlineButton(`${cityQuery[i * 5]}`, {
-          callback: `${cityQuery[i * 5]}`,
-          //stage: "country", country: cityQuery[bla],
+        bot.inlineButton(`${searchQuery[i * 5]}`, {
+          callback: `${searchQuery[i * 5]}`,
         }),
       ];
     }
     for (let y = 0; y < 5; y++) {
-      if (inlineButtonHere[i].length < 5 && cityQuery[i * 5 + 1 + y]) {
-        //因為cityQuery[i * 5 + 1 + y]不一定存在
+      if (inlineButtonHere[i].length < 5 && searchQuery[i * 5 + 1 + y]) {
         inlineButtonHere[i].push(
-          bot.inlineButton(`${cityQuery[i * 5 + 1 + y]}`, {
-            //這邊"+1"是因為cityQuery[i * 5  + y]在上面已經被加入
-            callback: `${cityQuery[i * 5 + 1 + y]}`,
+          bot.inlineButton(`${searchQuery[i * 5 + 1 + y]}`, {
+            callback: `${searchQuery[i * 5 + 1 + y]}`,
           })
         );
       }
     }
   }
 };
-const siteNameSearch = function (msg) {
-  siteNameSet.clear();
-  //console.log(`${msg.data}` + buttonArea + "7777777");
+
+/* 使用者最終需要收到的測站資料 */
+const siteSortDataHere = function (sitename) {
+  /* 收到使用者丟回的測站名稱後，設定此變數蒐集Data裡面擁有該測站名稱的資料  (siteRawData) */
+  let siteRawData;
   for (let i = 0; i < Data.records.length; i++) {
-    if (Data.records[i].County == `${msg.data}`) {
-      siteNameSet.add(Data.records[i].SiteName);
+    if (sitename == Data.records[i].SiteName) {
+      siteRawData = Data.records[i];
+      break;
     }
   }
 
-  const siteNameQuery = [];
-  const siteNameSetArray = [...siteNameSet];
-  for (let i = 0; i < siteNameSetArray.length; i++) {
-    let separateArray = [];
-    separateArray.push(siteNameSetArray[i]);
-    siteNameQuery.push(separateArray);
-  }
-  inlineButtonHere = [];
-  for (let i = 0; i < siteNameQuery.length / 5; i++) {
-    if (inlineButtonHere[i] == undefined) {
-      inlineButtonHere[i] = [
-        bot.inlineButton(`${siteNameQuery[i * 5]}`, {
-          callback: `${siteNameQuery[i * 5]}`,
-        }),
-      ];
-    }
-    for (let y = 0; y < 5; y++) {
-      if (inlineButtonHere[i].length < 5 && siteNameQuery[i * 5 + 1 + y]) {
-        //因為siteNameQuery[i * 5 + 1 + y]不一定存在
-        inlineButtonHere[i].push(
-          bot.inlineButton(`${siteNameQuery[i * 5 + 1 + y]}`, {
-            //這邊"+1"是因為siteNameQuery[i * 5  + y]在上面已經被加入
-            callback: `${siteNameQuery[i * 5 + 1 + y]}`,
-          })
-        );
-      }
-    }
+  let fieldsObjectAllkeys = Object.keys(fieldsObject);
+
+  for (let i = 0; i < fieldsObjectAllkeys.length; i++) {
+    let fieldsValues = fieldsObject[`${fieldsObjectAllkeys[i]}`];
+    let siteRawDataValues = siteRawData[`${fieldsObjectAllkeys[i]}`];
+    siteSortData += `${fieldsValues} 為 ${siteRawDataValues || "無"}\n`;
   }
 };
-bot.on(["/start", "/back"], (msg) => {
+
+/* 說因為資料是每小時更新一次，所以不用那麼平凡每跑一次就抓取資料一次(包含縣市那些) */
+
+let renewData;
+//var CronJob = require("cron").CronJob;
+renewData = new CronJob("* 12 * * * *", () => {
+  dataRun();
+  let num = Date.now();
+  let dd = new Date(num);
+  console.log(JSON.stringify(CountySiteNameObjectII));
+  console.log(dd.toString() + "<br />");
+});
+renewData.start();
+
+/* countySearch是用來蒐集所有測站的縣市，之後給inlineButtonHere這個變數，讓inlineButtonHere成為按鈕在鍵盤跑出來 */
+
+/* siteNameSearch是用來蒐集使用者給與特定縣市後，該縣市所擁有的測站名稱，之後給inlineButtonHere這個變數，讓inlineButtonHere成為按鈕在鍵盤跑出來 (setSiteNameListByCounty) */
+
+/* 下方都是機器人的監聽事件 */
+bot.on(["/start"], (msg) => {
   let replyMarkup = bot.keyboard(
     [
       ["/start", "/hide", "/stop"],
@@ -118,6 +161,7 @@ bot.on(["/start", "/back"], (msg) => {
     replyMarkup,
   });
 });
+
 bot.on("/hide", (msg) => {
   return bot.sendMessage(msg.from.id, "已隱藏快捷鍵，請按 /start 再次顯示.", {
     replyMarkup: "hide",
@@ -126,7 +170,7 @@ bot.on("/hide", (msg) => {
 
 bot.on("/instantInformation", (msg) => {
   buttonArea = "instantInformation";
-  countrySearch();
+  makeAInlineButtonHere(Object.keys(CountySiteNameObjectII));
   //console.log(inlineButtonHere);
   let replyMarkup = bot.inlineKeyboard(inlineButtonHere);
 
@@ -134,68 +178,32 @@ bot.on("/instantInformation", (msg) => {
     replyMarkup,
   });
 });
+bot.on("/stop", (message) => {
+  if (job) {
+    job.stop();
+    bot.sendMessage(message.chat.id, "已停止每日定時推送資訊");
+    //console.log(job);
+  } else {
+    bot.sendMessage(message.chat.id, "未設置每日定時推送");
+  }
+});
+
+bot.on("/setUpTimedNotifications", (msg) => {
+  buttonArea = "setUpTimedNotifications";
+  makeAInlineButtonHere(Object.keys(CountySiteNameObjectII));
+  //console.log(inlineButtonHere);
+  let replyMarkup = bot.inlineKeyboard(inlineButtonHere);
+
+  return bot.sendMessage(msg.from.id, "請選擇你要設定定時提醒的區域", {
+    replyMarkup,
+  });
+});
 
 // Inline button callback
 bot.on("callbackQuery", (msg) => {
   //這是第二個此部分的第二個callback，因為我設定一個變數去判別是否需要回應此項callback，同時在跑callback的時候會從上到下都去跑跑看，所以後面的步驟放前面才不會重複執行
-  if (buttonArea == "instantInformationCounty" && siteNameSet.has(msg.data)) {
-    //console.log(`跑前${msg.data}`);
-
-    //console.log(`跑中data是${msg.data},siteNameHere是${siteNameHere}`);
-    dataRun();
-    let dataProcess;
-    for (let i = 0; i < Data.records.length; i++) {
-      //console.log(`有跑${i + 1}次`);
-      if (msg.data == Data.records[i].SiteName) {
-        //console.log(`有進來!`);
-        dataProcess = Data.records[i];
-        //console.log(`replyMarkup是${replyMarkup}`);
-        break;
-      }
-    }
-    //console.log(dataProcess);
-    ///以下是把各測站的資訊與中文對上的code
-    let fieldsObject = {};
-    const addFieldsObject = function (keys, values) {
-      return (fieldsObject[keys] = values);
-    };
-    for (let i = 0; i < Data.fields.length; i++) {
-      let fieldsKeys = Data.fields[i].id;
-      let fieldsValues = Data.fields[i].info.label;
-      addFieldsObject(fieldsKeys, fieldsValues);
-    }
-    //console.log(fieldsObject);
-    ////
-    let fieldsObjectAllkeys = Object.keys(fieldsObject);
-    let outout = "";
-    for (let i = 0; i < fieldsObjectAllkeys.length; i++) {
-      let fieldsValues = fieldsObject[`${fieldsObjectAllkeys[i]}`];
-      let dataProcessValues = dataProcess[`${fieldsObjectAllkeys[i]}`];
-      //console.log(
-      //  `i=${i},fieldsValues=${fieldsValues},dataProcessValues=${dataProcessValues}`
-      // );
-      outout += `${fieldsValues} 為 ${dataProcessValues || "無"}\n`;
-    }
-    let replyMarkup = bot.sendMessage(msg.from.id, outout);
-    bot.answerCallbackQuery(
-      msg.id,
-      `Inline button callback: ${msg.data}`,
-      true
-    );
-    //console.log(outout);
-    //console.log(`跑後data是${msg.data},siteNameHere是${siteNameHere}`);
-    return bot.sendMessage(
-      msg.from.id,
-      `這是你要的 ${msg.data} 即時空氣品質資訊`,
-      { replyMarkup }
-    );
-  }
-});
-
-bot.on("callbackQuery", (msg) => {
-  //console.log(`${msg.data}` + buttonArea + "666666");
   if (buttonArea == "instantInformation") {
-    siteNameSearch(msg);
+    makeAInlineButtonHere(CountySiteNameObjectII[msg.data]);
     // console.log(inlineButtonHere);
     let replyMarkup = bot.inlineKeyboard(inlineButtonHere);
     bot.answerCallbackQuery(
@@ -208,146 +216,22 @@ bot.on("callbackQuery", (msg) => {
     return bot.sendMessage(msg.from.id, `請在 ${msg.data} 選擇你要查詢的地區`, {
       replyMarkup,
     });
-  }
-});
-bot.on("/stop", (message) => {
-  if (job) {
-    job.stop();
-    bot.sendMessage(message.chat.id, "已停止每日定時推送資訊");
-    //console.log(job);
-  } else {
-    bot.sendMessage(message.chat.id, "未設置每日定時推送");
-  }
-});
-bot.on("callbackQuery", (msg) => {
-  //console.log(`${msg.data}` + buttonArea + "666666");
-  if (buttonArea == "setUpTimedNotificationsTime") {
-    //有和上面重複
-    ////////////////////////////////////////////////////////////////////////////////////////
-
-    //console.log(`跑前${msg.data}`);
-
-    //console.log(`跑中data是${msg.data},siteNameHere是${siteNameHere}`);
-    dataRun();
-    let dataProcess;
-    for (let i = 0; i < Data.records.length; i++) {
-      //console.log(`有跑${i + 1}次`);
-      if (setUpTimeSiteName == Data.records[i].SiteName) {
-        //console.log(`有進來!`);
-        dataProcess = Data.records[i];
-        //console.log(`replyMarkup是${replyMarkup}`);
-        break;
-      }
-    }
-    //console.log(dataProcess);
-    ///以下是把各測站的資訊與中文對上的code
-    let fieldsObject = {};
-    const addFieldsObject = function (keys, values) {
-      return (fieldsObject[keys] = values);
-    };
-    for (let i = 0; i < Data.fields.length; i++) {
-      let fieldsKeys = Data.fields[i].id;
-      let fieldsValues = Data.fields[i].info.label;
-      addFieldsObject(fieldsKeys, fieldsValues);
-    }
-    //console.log(fieldsObject);
-    ////
-    let fieldsObjectAllkeys = Object.keys(fieldsObject);
-    let outout = "";
-    for (let i = 0; i < fieldsObjectAllkeys.length; i++) {
-      let fieldsValues = fieldsObject[`${fieldsObjectAllkeys[i]}`];
-      let dataProcessValues = dataProcess[`${fieldsObjectAllkeys[i]}`];
-      //console.log(
-      //  `i=${i},fieldsValues=${fieldsValues},dataProcessValues=${dataProcessValues}`
-      // );
-      outout += `${fieldsValues} 為 ${dataProcessValues || "無"}\n`;
-    }
-
-    //console.log(outout);
-    //console.log(`跑後data是${msg.data},siteNameHere是${siteNameHere}`);
-
-    ////////////////////////////////////////////////////////////////////////////////////////////
-    //console.log(msg.data);
-    let cronTimeHere = "* * " + msg.data + " * * *";
-    console.log(cronTimeHere);
-    job = new CronJob(cronTimeHere, () => {
-      bot.sendMessage(msg.from.id, outout);
-    });
-    job.start();
+  } else if (buttonArea == "instantInformationCounty") {
+    let siteName = msg.data;
+    siteSortDataHere(siteName);
+    let replyMarkup = bot.sendMessage(msg.from.id, siteSortData);
     bot.answerCallbackQuery(
       msg.id,
       `Inline button callback: ${msg.data}`,
       true
     );
-    buttonArea = "setUpTimedNotificationsTime";
-    //console.log(buttonArea + "123123123");
     return bot.sendMessage(
       msg.from.id,
-      `已設定 ${setUpTimeSiteName} 於每日 ${msg.data} 點提醒`
+      `這是你要的 ${msg.data} 即時空氣品質資訊`,
+      { replyMarkup }
     );
-  }
-});
-bot.on("callbackQuery", (msg) => {
-  //console.log(`${msg.data}` + buttonArea + "666666");
-  if (buttonArea == "setUpTimedNotificationsCounty") {
-    setUpTimeSiteName = msg.data;
-    console.log(setUpTimeSiteName);
-    const inlineButtonHere = [
-      [
-        bot.inlineButton("1點", { callback: "1" }),
-        bot.inlineButton("2點", { callback: "2" }),
-        bot.inlineButton("3點", { callback: "3" }),
-        bot.inlineButton("4點", { callback: "4" }),
-        bot.inlineButton("5點", { callback: "5" }),
-        bot.inlineButton("6點", { callback: "6" }),
-      ],
-      [
-        bot.inlineButton("7點", { callback: "7" }),
-        bot.inlineButton("8點", { callback: "8" }),
-        bot.inlineButton("9點", { callback: "9" }),
-        bot.inlineButton("10點", { callback: "10" }),
-        bot.inlineButton("11點", { callback: "11" }),
-        bot.inlineButton("12點", { callback: "12" }),
-      ],
-      [
-        bot.inlineButton("13點", { callback: "13" }),
-        bot.inlineButton("14點", { callback: "14" }),
-        bot.inlineButton("15點", { callback: "15" }),
-        bot.inlineButton("16點", { callback: "16" }),
-        bot.inlineButton("17點", { callback: "17" }),
-        bot.inlineButton("18點", { callback: "18" }),
-      ],
-      [
-        bot.inlineButton("19點", { callback: "19" }),
-        bot.inlineButton("20點", { callback: "20" }),
-        bot.inlineButton("21點", { callback: "21" }),
-        bot.inlineButton("22點", { callback: "22" }),
-        bot.inlineButton("23點", { callback: "23" }),
-        bot.inlineButton("24點", { callback: "24" }),
-      ],
-    ];
-    let replyMarkup = bot.inlineKeyboard(inlineButtonHere);
-
-    bot.answerCallbackQuery(
-      msg.id,
-      `Inline button callback: ${msg.data}`,
-      true
-    );
-    buttonArea = "setUpTimedNotificationsTime";
-    //console.log(buttonArea + "123123123");
-    return bot.sendMessage(
-      msg.from.id,
-      `請在 ${msg.data} 選擇你要每日提醒的時間`,
-      {
-        replyMarkup,
-      }
-    );
-  }
-});
-bot.on("callbackQuery", (msg) => {
-  //console.log(`${msg.data}` + buttonArea + "666666");
-  if (buttonArea == "setUpTimedNotifications") {
-    siteNameSearch(msg);
+  } else if (buttonArea == "setUpTimedNotifications") {
+    makeAInlineButtonHere(CountySiteNameObjectII[msg.data]);
     // console.log(inlineButtonHere);
     let replyMarkup = bot.inlineKeyboard(inlineButtonHere);
     bot.answerCallbackQuery(
@@ -356,7 +240,7 @@ bot.on("callbackQuery", (msg) => {
       true
     );
     buttonArea = "setUpTimedNotificationsCounty";
-    //console.log(buttonArea + "123123123");
+
     return bot.sendMessage(
       msg.from.id,
       `請在 ${msg.data} 選擇你要要設定定時提醒的地區`,
@@ -364,17 +248,59 @@ bot.on("callbackQuery", (msg) => {
         replyMarkup,
       }
     );
-  }
-});
-bot.on("/setUpTimedNotifications", (msg) => {
-  buttonArea = "setUpTimedNotifications";
-  countrySearch();
-  //console.log(inlineButtonHere);
-  let replyMarkup = bot.inlineKeyboard(inlineButtonHere);
+  } else if (buttonArea == "setUpTimedNotificationsCounty") {
+    setUpTimeSiteName = msg.data;
+    console.log(setUpTimeSiteName);
+    const numbers = [];
 
-  return bot.sendMessage(msg.from.id, "請選擇你要設定定時提醒的區域", {
-    replyMarkup,
-  });
+    for (let i = 0; i < 24; i++) {
+      numbers[i] = `${i + 1}`;
+    }
+    makeAInlineButtonHere(numbers);
+    let replyMarkup = bot.inlineKeyboard(inlineButtonHere);
+
+    bot.answerCallbackQuery(
+      msg.id,
+      `Inline button callback: ${msg.data}`,
+      true
+    );
+    buttonArea = "setUpTimedNotificationsTime";
+    return bot.sendMessage(
+      msg.from.id,
+      `請在 ${msg.data} 選擇你要每日提醒的時間 (選項單位為時)`,
+      {
+        replyMarkup,
+      }
+    );
+  } else if (buttonArea == "setUpTimedNotificationsTime") {
+    siteSortDataHere(setUpTimeSiteName);
+    let cronTimeHere = "* * " + msg.data + " * * *";
+    console.log(cronTimeHere);
+    job = new CronJob(cronTimeHere, () => {
+      bot.sendMessage(msg.from.id, siteSortData);
+    });
+    job.start();
+    bot.answerCallbackQuery(
+      msg.id,
+      `Inline button callback: ${msg.data}`,
+      true
+    );
+
+    return bot.sendMessage(
+      msg.from.id,
+      `已設定 ${setUpTimeSiteName} 於每日 ${msg.data} 點提醒`
+    );
+  } else {
+    bot.answerCallbackQuery(
+      msg.id,
+      `Inline button callback: ${msg.data}`,
+      true
+    );
+    return bot.sendMessage(
+      msg.from.id,
+      `步驟選擇錯誤，請回到主選單重新選擇要查詢的事項`
+    );
+  }
 });
 
 bot.start();
