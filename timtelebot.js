@@ -14,7 +14,7 @@ let CountySiteNameObjectII; // 查字典用的
 let inlineButtonHere;
 
 /* 這是使用者收到測站資料 */
-let siteSortData = "";
+let siteSortData;
 
 /* 要設定定時提醒的測站名稱 (reminderSiteName) */
 let setUpTimeSiteName;
@@ -122,7 +122,7 @@ const siteSortDataHere = function (sitename) {
   }
 
   let fieldsObjectAllkeys = Object.keys(fieldsObject);
-
+  siteSortData = "";
   for (let i = 0; i < fieldsObjectAllkeys.length; i++) {
     let fieldsValues = fieldsObject[`${fieldsObjectAllkeys[i]}`];
     let siteRawDataValues = siteRawData[`${fieldsObjectAllkeys[i]}`];
@@ -134,7 +134,7 @@ const siteSortDataHere = function (sitename) {
 
 let renewData;
 //var CronJob = require("cron").CronJob;
-renewData = new CronJob("* 12 * * * *", () => {
+renewData = new CronJob("0 30 * * * *", () => {
   dataRun();
   let num = Date.now();
   let dd = new Date(num);
@@ -274,7 +274,7 @@ bot.on("callbackQuery", (msg) => {
     );
   } else if (buttonArea == "setUpTimedNotificationsTime") {
     siteSortDataHere(setUpTimeSiteName);
-    let cronTimeHere = "* * " + msg.data + " * * *";
+    let cronTimeHere = "0 0 " + msg.data + " * * *";
     console.log(cronTimeHere);
     job = new CronJob(cronTimeHere, () => {
       bot.sendMessage(msg.from.id, siteSortData);
