@@ -17,13 +17,13 @@ let inlineButtonHere;
 let siteSortData;
 
 /* 要設定定時提醒的測站名稱 (reminderSiteName) */
-let setUpTimeSiteName;
+let setUpTimeSiteName = {};
 
 /* 測資的中文對照名稱所需變數 */
 let fieldsObject = {};
 
 /* 屬於Cronjob用的變數 */
-let job;
+let job = {};
 var CronJob = require("cron").CronJob;
 
 /* dataRun是去抓政府開放資料中的AQX Data(空氣品質資料)(之後可用generator、catcher、crawler來命名)，同時現在還有在每跑一次後作新的字典 */
@@ -169,6 +169,7 @@ bot.on("/hide", (msg) => {
 });
 
 bot.on("/instantInformation", (msg) => {
+  //console.log(msg.from.id);
   buttonArea = "instantInformation";
   makeAInlineButtonHere(Object.keys(CountySiteNameObjectII));
   //console.log(inlineButtonHere);
@@ -178,13 +179,15 @@ bot.on("/instantInformation", (msg) => {
     replyMarkup,
   });
 });
-bot.on("/stop", (message) => {
-  if (job) {
-    job.stop();
-    bot.sendMessage(message.chat.id, "已停止每日定時推送資訊");
+bot.on("/stop", (msg) => {
+  if (job[`${msg.from.id}`]) {
+    job[`${msg.from.id}`].stop();
+    delete job[`${msg.from.id}`];
+    delete setUpTimeSiteName[`${msg.from.id}`];
+    bot.sendMessage(msg.from.id, "已停止並刪除每日定時推送資訊");
     //console.log(job);
   } else {
-    bot.sendMessage(message.chat.id, "未設置每日定時推送");
+    bot.sendMessage(msg.from.id, "未設置每日定時推送");
   }
 });
 
@@ -249,8 +252,8 @@ bot.on("callbackQuery", (msg) => {
       }
     );
   } else if (buttonArea == "setUpTimedNotificationsCounty") {
-    setUpTimeSiteName = msg.data;
-    console.log(setUpTimeSiteName);
+    setUpTimeSiteName[`${msg.from.id}`] = msg.data;
+    console.log(setUpTimeSiteName[`${msg.from.id}`]);
     const numbers = [];
 
     for (let i = 0; i < 24; i++) {
@@ -273,13 +276,16 @@ bot.on("callbackQuery", (msg) => {
       }
     );
   } else if (buttonArea == "setUpTimedNotificationsTime") {
-    siteSortDataHere(setUpTimeSiteName);
+    siteSortDataHere(setUpTimeSiteName[`${msg.from.id}`]);
     let cronTimeHere = "0 0 " + msg.data + " * * *";
     console.log(cronTimeHere);
-    job = new CronJob(cronTimeHere, () => {
+    //為了要設定讓推播可以同時給很多人，嘗試讓job變成一個object，裡面是id:cronjob這樣
+    let cronJobInside;
+    cronJobInside = new CronJob(cronTimeHere, () => {
       bot.sendMessage(msg.from.id, siteSortData);
     });
-    job.start();
+    job[`${msg.from.id}`] = cronJobInside;
+    job[`${msg.from.id}`].start();
     bot.answerCallbackQuery(
       msg.id,
       `Inline button callback: ${msg.data}`,
@@ -288,7 +294,7 @@ bot.on("callbackQuery", (msg) => {
 
     return bot.sendMessage(
       msg.from.id,
-      `已設定 ${setUpTimeSiteName} 於每日 ${msg.data} 點提醒`
+      `已設定 ${setUpTimeSiteName[`${msg.from.id}`]} 於每日 ${msg.data} 點提醒`
     );
   } else {
     bot.answerCallbackQuery(
