@@ -7,14 +7,14 @@ var fs = require("fs");
 var url =
   "https://data.epa.gov.tw/api/v1/aqx_p_432?limit=1000&api_key=9be7b239-557b-4c10-9775-78cadfc555e9&sort=ImportDate%20desc&format=json";
 
-let Data = new Array();
+let Data;
 let buttonArea; //判斷每個按鈕不同的使用情境的變數
 let CountySiteNameObjectII; // 查字典用的
 /* 這是telebot專屬鍵盤layout (telebotInlineButtonLayoutSetting) */
 let inlineButtonHere;
 
-/* 這是使用者收到測站資料 */
-let siteSortData;
+/* 這是使用者收到測站資料 */ /*已改成區域變數 */
+//let siteSortData;
 
 /* 要設定定時提醒的測站名稱 (reminderSiteName) */
 let setUpTimeSiteName = {};
@@ -25,7 +25,7 @@ let fieldsObject = {};
 /* 屬於Cronjob用的變數 */
 let job = {};
 var CronJob = require("cron").CronJob;
-
+let dataRunNumber = 0;
 /* dataRun是去抓政府開放資料中的AQX Data(空氣品質資料)(之後可用generator、catcher、crawler來命名)，同時現在還有在每跑一次後作新的字典 */
 const dataRun = function () {
   https.get(url, function (response) {
@@ -42,7 +42,8 @@ const dataRun = function () {
 
       //console.log(data.records[0].SiteName);
       console.log("已跑完");
-      //jim說做查字典，直接把查字典放在抓資料裡面，擔心會新增測站或是減少測站//
+      //***說做查字典，直接把查字典放在抓資料裡面，擔心會新增測站或是減少測站//
+      /////現在說做資料庫
       ///////////////////////////////////////////////////////////////////////
 
       const DictionaryCountySiteName = function (Data) {
@@ -74,11 +75,16 @@ const dataRun = function () {
       }
       //console.log(fieldsObject);
       //////////////////////
-      ///以下是把各測站的資訊與中文對上的code
+      ///以上是把各測站的資訊與中文對上的code
+
+      //////因為不知道怎麼用執行順序來讓dataRun跑完再來跑資料庫，所以先在這裡繞過
+      if (dataRunNumber == 0) {
+        qwqwqwq();
+      }
+      dataRunNumber = 1;
     });
   });
 };
-dataRun();
 
 /* 製作InlineButton用的 */
 const makeAInlineButtonHere = function (x) {
@@ -114,20 +120,24 @@ const makeAInlineButtonHere = function (x) {
 const siteSortDataHere = function (sitename) {
   /* 收到使用者丟回的測站名稱後，設定此變數蒐集Data裡面擁有該測站名稱的資料  (siteRawData) */
   let siteRawData;
+  //console.log(Data);
   for (let i = 0; i < Data.records.length; i++) {
     if (sitename == Data.records[i].SiteName) {
+      console.log(Data.records[i].SiteName);
       siteRawData = Data.records[i];
       break;
     }
   }
 
   let fieldsObjectAllkeys = Object.keys(fieldsObject);
-  siteSortData = "";
+  let siteSortData = "";
   for (let i = 0; i < fieldsObjectAllkeys.length; i++) {
     let fieldsValues = fieldsObject[`${fieldsObjectAllkeys[i]}`];
+    //console.log(`siteRawData ${siteRawData}`);
     let siteRawDataValues = siteRawData[`${fieldsObjectAllkeys[i]}`];
     siteSortData += `${fieldsValues} 為 ${siteRawDataValues || "無"}\n`;
   }
+  return siteSortData;
 };
 
 /* 說因為資料是每小時更新一次，所以不用那麼平凡每跑一次就抓取資料一次(包含縣市那些) */
@@ -142,6 +152,63 @@ renewData = new CronJob("0 30 * * * *", () => {
   console.log(dd.toString() + "<br />");
 });
 renewData.start();
+
+/////////////////////////////////////////做資料庫存資料防止死機時使用者設定資料消失
+//https://ithelp.ithome.com.tw/articles/10238605
+var mysql = require("mysql");
+
+var pool = mysql.createPool({
+  user: "root",
+  password: "YOUR_PASSWORD",
+  host: "localhost",
+  port: "3306",
+  database: "YOUR_DATABASE",
+  waitForConnections: true,
+  connectionLimit: 10, //連線數上限
+});
+const qwqwqwq = async function () {
+  // 取得連線
+
+  pool.getConnection((connectionErr, connection) => {
+    if (connectionErr) {
+      console.log(connectionErr);
+    } else {
+      connection.query(
+        "SELECT * FROM users  ",
+
+        async function (queryErr, queryRows) {
+          await Data;
+          //callback function
+          console.log(queryRows);
+          /// queryRows是拿到的資料庫資料，在機器人重啟時可以把資料庫的資料重新設定定時功能
+          for (let i = 0; i < queryRows.length; i++) {
+            let queryRowsSiteName = queryRows[i].site_name;
+            let cronTimeHere = "0 0 " + queryRows[i].set_time + " * * *";
+            let cronJobInside;
+            cronJobInside = new CronJob(cronTimeHere, () => {
+              bot.sendMessage(
+                queryRows[i].id,
+                siteSortDataHere(queryRowsSiteName)
+              );
+            });
+            job[queryRows[i].id] = cronJobInside;
+            job[queryRows[i].id].start();
+            console.log(`i已跑到${i}`);
+          }
+          ///
+
+          //console.log(queryErr);
+          // 釋放連線
+          connection.release();
+        }
+      );
+    }
+  });
+};
+
+///////////////////
+
+dataRun();
 
 /* countySearch是用來蒐集所有測站的縣市，之後給inlineButtonHere這個變數，讓inlineButtonHere成為按鈕在鍵盤跑出來 */
 
@@ -184,6 +251,25 @@ bot.on("/stop", (msg) => {
     job[`${msg.from.id}`].stop();
     delete job[`${msg.from.id}`];
     delete setUpTimeSiteName[`${msg.from.id}`];
+    ////////////////刪除資料
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.log(err);
+      } else {
+        connection.query(
+          "DELETE FROM users where id = ?",
+          [msg.from.id],
+          function (err, rows) {
+            //callback function
+            console.log(rows);
+            console.log(err);
+            // 釋放連線
+            connection.release();
+          }
+        );
+      }
+    });
+    /////////
     bot.sendMessage(msg.from.id, "已停止並刪除每日定時推送資訊");
     //console.log(job);
   } else {
@@ -221,8 +307,7 @@ bot.on("callbackQuery", (msg) => {
     });
   } else if (buttonArea == "instantInformationCounty") {
     let siteName = msg.data;
-    siteSortDataHere(siteName);
-    let replyMarkup = bot.sendMessage(msg.from.id, siteSortData);
+    let replyMarkup = bot.sendMessage(msg.from.id, siteSortDataHere(siteName));
     bot.answerCallbackQuery(
       msg.id,
       `Inline button callback: ${msg.data}`,
@@ -276,13 +361,34 @@ bot.on("callbackQuery", (msg) => {
       }
     );
   } else if (buttonArea == "setUpTimedNotificationsTime") {
-    siteSortDataHere(setUpTimeSiteName[`${msg.from.id}`]);
+    //////////////////////////////////////新增資料到資料庫
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.log(err);
+      } else {
+        connection.query(
+          "INSERT INTO users(`id`, `set_time`, `site_name`) values (?,?,?) ",
+          [msg.from.id, msg.data, setUpTimeSiteName[`${msg.from.id}`]],
+          function (err, rows) {
+            //callback function
+            console.log(rows);
+            console.log(err);
+            // 釋放連線
+            connection.release();
+          }
+        );
+      }
+    });
+    ////////////
     let cronTimeHere = "0 0 " + msg.data + " * * *";
-    console.log(cronTimeHere);
+    //console.log(cronTimeHere);
     //為了要設定讓推播可以同時給很多人，嘗試讓job變成一個object，裡面是id:cronjob這樣
     let cronJobInside;
     cronJobInside = new CronJob(cronTimeHere, () => {
-      bot.sendMessage(msg.from.id, siteSortData);
+      bot.sendMessage(
+        msg.from.id,
+        siteSortDataHere(setUpTimeSiteName[`${msg.from.id}`])
+      );
     });
     job[`${msg.from.id}`] = cronJobInside;
     job[`${msg.from.id}`].start();
