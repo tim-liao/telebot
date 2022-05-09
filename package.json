@@ -1,0 +1,22 @@
+{
+  "name": "1010",
+  "version": "1.0.0",
+  "main": "timtelebot.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "timLiao",
+  "license": "MIT",
+  "dependencies": {
+    "telebot": "^1.4.1",
+    "mysql": "^2.18.1",
+    "cron": "^1.8.2"
+  },
+  "devDependencies": {},
+  "keywords": [],
+  "description": "''",
+  "repository": {
+    "type": "git",
+    "url": "''"
+  }
+}

@@ -1,5 +1,5 @@
 const TeleBot = require("telebot");
-const bot = new TeleBot("TELEGRAM_BOT_TOKEN");
+const bot = new TeleBot(process.env.TELEGRAM_BOT_TOKEN);
 //https://www.ruyut.com/2020/03/js-https-get.html
 var https = require("https");
 var fs = require("fs");
@@ -144,13 +144,19 @@ const siteSortDataHere = function (sitename) {
 
 let renewData;
 //var CronJob = require("cron").CronJob;
-renewData = new CronJob("0 30 * * * *", () => {
-  dataRun();
-  let num = Date.now();
-  let dd = new Date(num);
-  console.log(JSON.stringify(CountySiteNameObjectII));
-  console.log(dd.toString() + "<br />");
-});
+renewData = new CronJob(
+  "0 30 * * * *",
+  () => {
+    dataRun();
+    let num = Date.now();
+    let dd = new Date(num);
+    console.log(JSON.stringify(CountySiteNameObjectII));
+    console.log(dd.toString() + "<br />");
+  },
+  null,
+  false,
+  "Asia/Taipei"
+);
 renewData.start();
 
 /////////////////////////////////////////做資料庫存資料防止死機時使用者設定資料消失
@@ -158,13 +164,13 @@ renewData.start();
 var mysql = require("mysql");
 
 var pool = mysql.createPool({
-  user: "root",
-  password: "YOUR_PASSWORD",
-  host: "localhost",
-  port: "3306",
-  database: "YOUR_DATABASE",
-  waitForConnections: true,
-  connectionLimit: 10, //連線數上限
+  user: process.env.MYSQL_USER,
+  password: process.env.MYSQL_PASSWORD,
+  host: process.env.MYSQL_HOST,
+  port: process.env.MYSQL_PORT,
+  database: process.env.MYSQL_DATABASE,
+  waitForConnections: process.env.MYSQL_WAITFORCONNECTIONS,
+  connectionLimit: process.env.MYSQL_CONNECTIONLIMIT, //連線數上限
 });
 const qwqwqwq = async function () {
   // 取得連線
@@ -384,12 +390,18 @@ bot.on("callbackQuery", (msg) => {
     //console.log(cronTimeHere);
     //為了要設定讓推播可以同時給很多人，嘗試讓job變成一個object，裡面是id:cronjob這樣
     let cronJobInside;
-    cronJobInside = new CronJob(cronTimeHere, () => {
-      bot.sendMessage(
-        msg.from.id,
-        siteSortDataHere(setUpTimeSiteName[`${msg.from.id}`])
-      );
-    });
+    cronJobInside = new CronJob(
+      cronTimeHere,
+      () => {
+        bot.sendMessage(
+          msg.from.id,
+          siteSortDataHere(setUpTimeSiteName[`${msg.from.id}`])
+        );
+      },
+      null,
+      false,
+      "Asia/Taipei"
+    );
     job[`${msg.from.id}`] = cronJobInside;
     job[`${msg.from.id}`].start();
     bot.answerCallbackQuery(
