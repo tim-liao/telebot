@@ -79,7 +79,7 @@ const dataRun = function () {
 
       //////因為不知道怎麼用執行順序來讓dataRun跑完再來跑資料庫，所以先在這裡繞過
       if (dataRunNumber == 0) {
-        qwqwqwq();
+        selectMysqlData();
       }
       dataRunNumber = 1;
     });
@@ -141,22 +141,29 @@ const siteSortDataHere = function (sitename) {
 };
 
 /* 說因為資料是每小時更新一次，所以不用那麼平凡每跑一次就抓取資料一次(包含縣市那些) */
-
+//資料API偶抓不到資料，故設定若沒抓到資料則延續前一份資料並回報錯誤
 let renewData;
 //var CronJob = require("cron").CronJob;
 renewData = new CronJob(
-  "0 30 * * * *",
-  () => {
-    dataRun();
-    let num = Date.now();
-    let dd = new Date(num);
-    console.log(JSON.stringify(CountySiteNameObjectII));
-    console.log(dd.toString() + "<br />");
+  "0 35 * * * *",
+  async () => {
+    try {
+      dataRun();
+    } catch (err) {
+      console.error(`本次未抓到資料:${err}`);
+      return bot.sendMessage(process.env.TELEGRAM_BOT_MY_ID, "本次未抓到資料");
+    }
+    //時間戳記是拿到豪秒
+    let getTimestamp = Date.now();
+    let dateObj = new Date(getTimestamp);
+    //console.log(JSON.stringify(CountySiteNameObjectII));
+    console.log(dateObj.toString());
   },
   null,
   false,
   "Asia/Taipei"
 );
+
 renewData.start();
 
 /////////////////////////////////////////做資料庫存資料防止死機時使用者設定資料消失
@@ -172,7 +179,7 @@ var pool = mysql.createPool({
   waitForConnections: process.env.MYSQL_WAITFORCONNECTIONS,
   connectionLimit: process.env.MYSQL_CONNECTIONLIMIT, //連線數上限
 });
-const qwqwqwq = async function () {
+const selectMysqlData = async function () {
   // 取得連線
 
   pool.getConnection((connectionErr, connection) => {
