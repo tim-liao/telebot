@@ -4,9 +4,7 @@ const bot = new TeleBot(process.env.TELEGRAM_BOT_TOKEN);
 var https = require("https");
 var fs = require("fs");
 
-var url =
-  "https://data.epa.gov.tw/api/v1/aqx_p_432?limit=1000&api_key=9be7b239-557b-4c10-9775-78cadfc555e9&sort=ImportDate%20desc&format=json";
-
+var url = process.env.AQI_API;
 let Data;
 let buttonArea; //判斷每個按鈕不同的使用情境的變數
 let CountySiteNameObjectII; // 查字典用的
@@ -49,8 +47,8 @@ const dataRun = function () {
       const DictionaryCountySiteName = function (Data) {
         CountySiteNameObjectII = {};
         for (let i = 0; i < Data.records.length; i++) {
-          let key = Data.records[i].County;
-          let values = Data.records[i].SiteName;
+          let key = Data.records[i].county;
+          let values = Data.records[i].sitename;
           if (CountySiteNameObjectII.hasOwnProperty(key)) {
             //檢查object裡面有無此county作key存在
             CountySiteNameObjectII[key].push(values);
@@ -122,8 +120,8 @@ const siteSortDataHere = function (sitename) {
   let siteRawData;
   //console.log(Data);
   for (let i = 0; i < Data.records.length; i++) {
-    if (sitename == Data.records[i].SiteName) {
-      console.log(Data.records[i].SiteName);
+    if (sitename == Data.records[i].sitename) {
+      console.log(Data.records[i].sitename);
       siteRawData = Data.records[i];
       break;
     }
@@ -151,7 +149,10 @@ renewData = new CronJob(
       dataRun();
     } catch (err) {
       console.error(`本次未抓到資料:${err}`);
-      return bot.sendMessage(process.env.TELEGRAM_BOT_MY_ID, "本次未抓到資料");
+      return bot.sendMessage(
+        process.env.TELEGRAM_BOT_MY_ID,
+        `本次未抓到資料:${err}`
+      );
     }
     //時間戳記是拿到豪秒
     let getTimestamp = Date.now();
